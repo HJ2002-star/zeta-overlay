@@ -1,10 +1,13 @@
 package com.example.zetaoverlay
 
 import android.accessibilityservice.AccessibilityService
+import android.graphics.Outline
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.net.Uri
 import android.view.Gravity
+import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.widget.ImageView
 
@@ -51,6 +54,13 @@ class OverlayManager(private val service: AccessibilityService) {
         val imageView = ImageView(service).apply {
             setImageURI(item.imageUri)
             scaleType = ImageView.ScaleType.CENTER_CROP
+            // 아바타를 원형으로 잘라서 보여준다.
+            clipToOutline = true
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setOval(0, 0, view.width, view.height)
+                }
+            }
         }
 
         val params = WindowManager.LayoutParams(
