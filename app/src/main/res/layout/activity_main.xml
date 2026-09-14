@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <EditText
+        android:id="@+id/editCharacterName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="캐릭터 이름 (제타에 표시되는 이름과 동일하게)" />
+
+    <Button
+        android:id="@+id/buttonPickImage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="이미지 선택" />
+
+    <ImageView
+        android:id="@+id/imagePreview"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:layout_marginTop="12dp"
+        android:scaleType="centerCrop" />
+
+    <Button
+        android:id="@+id/buttonSave"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="매핑 저장" />
+
+    <Button
+        android:id="@+id/buttonOpenAccessibility"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="접근성 설정 열기" />
+
+    <Button
+        android:id="@+id/buttonLoadDump"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="마지막 화면 덤프 불러오기" />
+
+    <Button
+        android:id="@+id/buttonShareDump"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="덤프 공유하기 (카톡 나에게 보내기 등)" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="12dp">
+
+        <TextView
+            android:id="@+id/textDumpContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textIsSelectable="true"
+            android:textSize="11sp"
+            android:text="" />
+
+    </ScrollView>
+
+</LinearLayout>
