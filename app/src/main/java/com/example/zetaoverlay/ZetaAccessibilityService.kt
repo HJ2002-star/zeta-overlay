@@ -65,13 +65,25 @@ class ZetaAccessibilityService : AccessibilityService() {
         val rawItems = mutableListOf<OverlayItem>()
         collectAvatarButtons(root, rawItems)
 
-        // 3단계: 같은 id가 "직전 폴링에도" 있었던 것만 실제로 그린다. 스크롤 중이라
+        // 같은 이름의 아바타가 아주 가까운 위치에 중복으로 잡히는 경우(WebView 쪽 중복 노드로
+        // 추정) 하나만 남긴다 — 사진에서 프사 밑에 다른 이미지가 겹쳐 보이던 문제의 원인.
+        val deduped = mutableListOf<OverlayItem>()
+        rawItems.forEach { candidate ->
+            val name = candidate.id.substringBefore('@')
+            val isDuplicate = deduped.any { existing ->
+                existing.id.substringBefore('@') == name &&
+                    kotlin.math.abs(existing.bounds.top - candidate.bounds.top) < DEDUP_DISTANCE_PX
+            }
+            if (!isDuplicate) deduped.add(candidate)
+        }
+
+        // 같은 id가 "직전 폴링에도" 있었던 것만 실제로 그린다. 스크롤 중이라
         // 이번에 처음 나타난 id는 아직 좌표가 안 맞을 수 있으니 한 사이클 건너뛰고,
         // 다음 폴링(0.2초 뒤)에도 같은 자리에 있으면 그때 그린다.
-        val stableItems = rawItems.filter { lastSeenBounds.containsKey(it.id) }
+        val stableItems = deduped.filter { lastSeenBounds.containsKey(it.id) }
 
         lastSeenBounds.clear()
-        rawItems.forEach { lastSeenBounds[it.id] = it.bounds }
+        deduped.forEach { lastSeenBounds[it.id] = it.bounds }
 
         overlayManager.update(stableItems)
     }
@@ -136,6 +148,9 @@ class ZetaAccessibilityService : AccessibilityService() {
 
         // 아바타 Button의 text가 캐릭터 이름이라 가정 — 너무 길면(문장이면) 이름이 아닌 걸로 간주
         private const val MAX_NAME_LENGTH = 12
+
+        // 같은 이름의 중복 후보를 걸러낼 때, 이 거리(px) 이내면 "같은 아바타"로 취급
+        private const val DEDUP_DISTANCE_PX = 150
 
         // 처음엔 true로 두고 실제 화면 구조를 Logcat에서 확인한 뒤 false로 바꾸세요.
         private const val DEBUG_DUMP_TREE = true
