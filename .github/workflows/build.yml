@@ -19,8 +19,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK 설치
-        uses: android-actions/setup-android@v3
+      - name: 라이선스 동의 (ubuntu-latest에 SDK가 이미 깔려있음)
+        run: yes | sdkmanager --licenses > /dev/null || true
 
       - name: 필요한 SDK 패키지 설치
         run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0"
