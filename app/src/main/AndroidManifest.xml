@@ -15,6 +15,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".MappingListActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
         <!-- SYSTEM_ALERT_WINDOW 권한 불필요: 접근성 서비스가 TYPE_ACCESSIBILITY_OVERLAY로 직접 오버레이 가능 -->
         <service
             android:name=".ZetaAccessibilityService"

@@ -55,6 +55,10 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "'$name' 매핑 저장 완료", Toast.LENGTH_SHORT).show()
         }
 
+        findViewById<Button>(R.id.buttonManageMappings).setOnClickListener {
+            startActivity(Intent(this, MappingListActivity::class.java))
+        }
+
         findViewById<Button>(R.id.buttonOpenAccessibility).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }

@@ -15,6 +15,11 @@ class ZetaAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
 
+    // 직전 폴링에서 본 아바타 id -> bounds. "이번에도 같은 id가 보였을 때만" 실제로 그린다.
+    // (WebView 특성상 스크롤 중에는 좌표가 실제 화면과 어긋난 채로 보고되는 경우가 있어서,
+    //  움직이는 동안엔 아예 숨기고, 자리가 안정된 뒤에만 오버레이를 띄우기 위한 안전장치)
+    private val lastSeenBounds = mutableMapOf<String, Rect>()
+
     // 이벤트가 안정적으로 안 오는 WebView 특성 때문에, 이벤트를 기다리지 않고
     // 일정 주기로 스스로 화면을 다시 확인한다. 이러면 (1) 제타를 벗어나는 순간
     // 바로 감지해서 오버레이를 지울 수 있고, (2) 스크롤 중에도 위치가 계속 따라온다.
@@ -43,6 +48,7 @@ class ZetaAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow
         if (root == null || root.packageName != TARGET_PACKAGE) {
             overlayManager.update(emptyList())
+            lastSeenBounds.clear()
             return
         }
 
@@ -56,10 +62,18 @@ class ZetaAccessibilityService : AccessibilityService() {
 
         // 2단계: 실제 덤프로 확인된 구조 — 아바타는 ImageView가 아니라
         // "정사각형 Button이고, 그 Button의 text 자체가 캐릭터 이름"이다.
-        val overlayItems = mutableListOf<OverlayItem>()
-        collectAvatarButtons(root, overlayItems)
+        val rawItems = mutableListOf<OverlayItem>()
+        collectAvatarButtons(root, rawItems)
 
-        overlayManager.update(overlayItems)
+        // 3단계: 같은 id가 "직전 폴링에도" 있었던 것만 실제로 그린다. 스크롤 중이라
+        // 이번에 처음 나타난 id는 아직 좌표가 안 맞을 수 있으니 한 사이클 건너뛰고,
+        // 다음 폴링(0.2초 뒤)에도 같은 자리에 있으면 그때 그린다.
+        val stableItems = rawItems.filter { lastSeenBounds.containsKey(it.id) }
+
+        lastSeenBounds.clear()
+        rawItems.forEach { lastSeenBounds[it.id] = it.bounds }
+
+        overlayManager.update(stableItems)
     }
 
     private fun collectAvatarButtons(node: AccessibilityNodeInfo, out: MutableList<OverlayItem>) {
@@ -98,6 +112,7 @@ class ZetaAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         overlayManager.update(emptyList())
+        lastSeenBounds.clear()
     }
 
     override fun onDestroy() {
