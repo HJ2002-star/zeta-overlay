@@ -102,7 +102,15 @@ class ZetaAccessibilityService : AccessibilityService() {
                     // id에 y좌표를 대략적인 구간(30px)으로 묶어서, 스크롤 중 미세한 좌표 변화로
                     // 매번 새 오버레이가 생성/삭제되는 걸 줄인다.
                     val id = "$name@${bounds.top / 30}"
-                    out.add(OverlayItem(id, bounds, imageUri))
+                    // 실측 결과: 접근성 좌표가 실제 프사보다 "프사 한 칸 크기만큼" 아래로 잡힘.
+                    // 크기는 그대로 두고, 그만큼 위로 옮겨서 실제 프사 위치에 맞춘다.
+                    val adjustedBounds = Rect(
+                        bounds.left,
+                        bounds.top - bounds.height(),
+                        bounds.right,
+                        bounds.top
+                    )
+                    out.add(OverlayItem(id, adjustedBounds, imageUri))
                 }
             }
         }
