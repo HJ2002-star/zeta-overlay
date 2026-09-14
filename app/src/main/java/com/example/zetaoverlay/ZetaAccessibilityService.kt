@@ -31,67 +31,36 @@ class ZetaAccessibilityService : AccessibilityService() {
             DumpStore.save(this, builder.toString())
         }
 
-        // 2단계: 제타는 메시지마다 아바타+이름이 반복되는 그룹채팅 구조이므로,
-        // 화면 전체에서 (아바타, 이름) 쌍을 여러 개 찾아 각각 매핑을 조회한다.
-        val avatars = mutableListOf<Rect>()
-        collectAvatarBounds(root, avatars)
-
-        val names = mutableListOf<Pair<Rect, String>>()
-        collectNameCandidates(root, names)
-
-        val overlayItems = avatars.mapNotNull { avatarBounds ->
-            val matchedName = findClosestName(avatarBounds, names) ?: return@mapNotNull null
-            val imageUri = mappingRepository.getImageFor(matchedName) ?: return@mapNotNull null
-            // id에 y좌표를 대략적인 구간(30px)으로 묶어서, 스크롤 중 미세한 좌표 변화로
-            // 매번 새 오버레이가 생성/삭제되는 걸 줄인다. 필요하면 구간 크기를 조정할 것.
-            val id = "$matchedName@${avatarBounds.top / 30}"
-            OverlayItem(id, avatarBounds, imageUri)
-        }
+        // 2단계: 실제 덤프로 확인된 구조 — 아바타는 ImageView가 아니라
+        // "정사각형 Button이고, 그 Button의 text 자체가 캐릭터 이름"이다.
+        // (제타는 WebView로 채팅 화면을 그리는데, 아바타 버튼의 접근성 텍스트가 곧 이름으로 노출됨)
+        val overlayItems = mutableListOf<OverlayItem>()
+        collectAvatarButtons(root, overlayItems)
 
         overlayManager.update(overlayItems)
     }
 
-    /**
-     * TODO(임시 휴리스틱): 정사각형에 가까운 ImageView를 아바타로 간주.
-     * dumpNodeTree 로그로 실제 크기/viewIdResourceName을 확인한 뒤
-     * 더 정확한 조건(예: 특정 id 접두사)으로 좁혀도 좋다.
-     */
-    private fun collectAvatarBounds(node: AccessibilityNodeInfo, out: MutableList<Rect>) {
-        if (node.className == "android.widget.ImageView") {
+    private fun collectAvatarButtons(node: AccessibilityNodeInfo, out: MutableList<OverlayItem>) {
+        if (node.className == "android.widget.Button" && !node.text.isNullOrBlank()) {
+            val name = node.text.toString()
             val bounds = Rect().also { node.getBoundsInScreen(it) }
             val ratio = bounds.width().toFloat() / bounds.height().coerceAtLeast(1)
-            if (bounds.width() in AVATAR_MIN_PX..AVATAR_MAX_PX && ratio in 0.7f..1.4f) {
-                out.add(bounds)
+            val looksLikeAvatar = bounds.width() in AVATAR_MIN_PX..AVATAR_MAX_PX &&
+                ratio in 0.7f..1.4f &&
+                name.length <= MAX_NAME_LENGTH
+
+            if (looksLikeAvatar) {
+                mappingRepository.getImageFor(name)?.let { imageUri ->
+                    // id에 y좌표를 대략적인 구간(30px)으로 묶어서, 스크롤 중 미세한 좌표 변화로
+                    // 매번 새 오버레이가 생성/삭제되는 걸 줄인다.
+                    val id = "$name@${bounds.top / 30}"
+                    out.add(OverlayItem(id, bounds, imageUri))
+                }
             }
         }
         for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { collectAvatarBounds(it, out) }
+            node.getChild(i)?.let { collectAvatarButtons(it, out) }
         }
-    }
-
-    private fun collectNameCandidates(node: AccessibilityNodeInfo, out: MutableList<Pair<Rect, String>>) {
-        if (node.className == "android.widget.TextView" && !node.text.isNullOrBlank()) {
-            val bounds = Rect().also { node.getBoundsInScreen(it) }
-            out.add(bounds to node.text.toString())
-        }
-        for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { collectNameCandidates(it, out) }
-        }
-    }
-
-    /**
-     * 아바타 우측, 세로로 겹치는 범위에 있는 텍스트 중 가장 가까운 것을
-     * "캐릭터 이름"으로 간주한다. (스크린샷 기준: 이름이 아바타 오른쪽 상단에 위치)
-     */
-    private fun findClosestName(avatar: Rect, candidates: List<Pair<Rect, String>>): String? {
-        return candidates
-            .filter { (bounds, _) ->
-                val horizontallyToTheRight = bounds.left >= avatar.right - HORIZONTAL_TOLERANCE_PX
-                val verticallyNear = bounds.centerY() in (avatar.top - VERTICAL_TOLERANCE_PX)..(avatar.bottom + VERTICAL_TOLERANCE_PX)
-                horizontallyToTheRight && verticallyNear
-            }
-            .minByOrNull { (bounds, _) -> kotlin.math.abs(bounds.top - avatar.top) }
-            ?.second
     }
 
     private fun buildDumpText(node: AccessibilityNodeInfo, depth: Int, builder: StringBuilder) {
@@ -111,14 +80,12 @@ class ZetaAccessibilityService : AccessibilityService() {
         private const val TAG = "ZetaOverlayService"
         private const val TARGET_PACKAGE = "com.scatterlab.messenger"
 
-        // 아바타로 인정할 ImageView 크기 범위(px). 실제 기기 해상도에 맞춰 dumpNodeTree로 확인 후 조정.
+        // 아바타로 인정할 Button 크기 범위(px). 실측 기준 96px 정사각형 (1080폭 기기).
         private const val AVATAR_MIN_PX = 60
         private const val AVATAR_MAX_PX = 220
 
-        // 이름 텍스트가 아바타 오른쪽으로 이 정도 안쪽에 있어도 허용(음수 = 살짝 겹쳐도 됨)
-        private const val HORIZONTAL_TOLERANCE_PX = 20
-        // 이름 텍스트 세로 중심이 아바타 상하 범위에서 이 정도 벗어나도 허용
-        private const val VERTICAL_TOLERANCE_PX = 40
+        // 아바타 Button의 text가 캐릭터 이름이라 가정 — 너무 길면(문장이면) 이름이 아닌 걸로 간주
+        private const val MAX_NAME_LENGTH = 12
 
         // 처음엔 true로 두고 실제 화면 구조를 Logcat에서 확인한 뒤 false로 바꾸세요.
         private const val DEBUG_DUMP_TREE = true
