@@ -47,6 +47,12 @@ android.widget.TextView text=박현우  bounds=Rect(126, 1732 - 219, 1777)  ← 
 ## 열기
 Android Studio가 있다면: 이 폴더를 "Open" → Gradle sync → 기기 연결 후 Run.
 
+## 서명 키 (업데이트 시 재설치 문제 방지)
+`app/debug.keystore`를 저장소에 고정해두고 `app/build.gradle`에서 그 키로만 서명하도록 했습니다.
+이게 없으면 GitHub Actions가 매번 새 서버에서 빌드할 때마다 서명이 랜덤하게 달라져서, 업데이트할
+때마다 기존 앱을 지우고 재설치해야 하고(+ 저장해둔 매핑도 날아감) 하는 문제가 생깁니다. 이 키가
+있으면 앞으로는 그냥 새 apk를 그 위에 설치(덮어쓰기)하면 됩니다.
+
 ## Android Studio 없이 빌드하기 (GitHub Actions)
 PC 용량이 부족해서 Android Studio를 못 깔 때는, 컴파일을 GitHub 서버가 대신 하게 만들 수 있습니다.
 이 프로젝트에는 `.github/workflows/build.yml`이 이미 포함되어 있어서, 저장소에 올리기만 하면 됩니다.

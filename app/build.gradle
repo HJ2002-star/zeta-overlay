@@ -15,7 +15,22 @@ android {
         versionName "1.0"
     }
 
+    signingConfigs {
+        debug {
+            // 저장소에 포함된 고정 디버그 키. 이게 없으면 빌드할 때마다(특히 GitHub Actions처럼
+            // 매번 새 서버에서 빌드할 때) 서명이 랜덤하게 바뀌어서, 업데이트할 때마다
+            // 기존 앱을 지우고 재설치해야 하는 문제가 생긴다.
+            storeFile file("debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
         }
