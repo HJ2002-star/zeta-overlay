@@ -110,7 +110,7 @@ class ZetaAccessibilityService : AccessibilityService() {
                         bounds.right,
                         bounds.top
                     )
-                    out.add(OverlayItem(id, adjustedBounds, imageUri))
+                    out.add(OverlayItem(id, name, adjustedBounds, imageUri))
                 }
             }
         }

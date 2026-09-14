@@ -1,6 +1,7 @@
 package com.example.zetaoverlay
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
 import android.graphics.Outline
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -12,7 +13,7 @@ import android.view.WindowManager
 import android.widget.ImageView
 
 /** 화면에 동시에 떠 있는 아바타 오버레이 하나에 대한 정보. */
-data class OverlayItem(val id: String, val bounds: Rect, val imageUri: Uri)
+data class OverlayItem(val id: String, val name: String, val bounds: Rect, val imageUri: Uri)
 
 /**
  * TYPE_ACCESSIBILITY_OVERLAY를 사용해 다른 앱 화면 위에 이미지를 그린다.
@@ -61,14 +62,26 @@ class OverlayManager(private val service: AccessibilityService) {
                     outline.setOval(0, 0, view.width, view.height)
                 }
             }
+            isClickable = true
+            // 제타 자체의 "프사 눌러서 크게 보기"처럼, 우리 오버레이도 누르면 원본(내가 지정한
+            // 이미지)을 전체화면으로 보여준다.
+            setOnClickListener {
+                val intent = Intent(service, FullImageActivity::class.java).apply {
+                    putExtra(FullImageActivity.EXTRA_IMAGE_URI, item.imageUri.toString())
+                    putExtra(FullImageActivity.EXTRA_CHARACTER_NAME, item.name)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                runCatching { service.startActivity(intent) }
+            }
         }
 
         val params = WindowManager.LayoutParams(
             item.bounds.width(),
             item.bounds.height(),
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            // FLAG_NOT_TOUCHABLE을 빼서 이 영역만 탭을 받을 수 있게 한다 (그 바깥은 그대로
+            // 원래 화면으로 터치가 통과됨). FLAG_NOT_FOCUSABLE은 유지해서 키보드 포커스는 안 뺏는다.
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
