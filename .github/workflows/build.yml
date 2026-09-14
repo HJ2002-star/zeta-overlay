@@ -20,10 +20,13 @@ jobs:
           java-version: '17'
 
       - name: 라이선스 동의 (ubuntu-latest에 SDK가 이미 깔려있음)
-        run: yes | sdkmanager --licenses > /dev/null || true
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager | head -n 1)
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       - name: 필요한 SDK 패키지 설치
-        run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0"
+        run: "\"$SDKMANAGER\" --install \"platforms;android-34\" \"build-tools;34.0.0\""
 
       - name: Gradle 설치 (프로젝트에 gradlew가 없어도 됨)
         uses: gradle/actions/setup-gradle@v4
