@@ -1,7 +1,7 @@
 package com.example.zetaoverlay
 
 import android.accessibilityservice.AccessibilityService
-import android.content.Intent
+import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -10,7 +10,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.TextView
 
 /** 화면에 동시에 떠 있는 아바타 오버레이 하나에 대한 정보. */
 data class OverlayItem(val id: String, val name: String, val bounds: Rect, val imageUri: Uri)
@@ -27,6 +29,10 @@ class OverlayManager(private val service: AccessibilityService) {
     private val windowManager =
         service.getSystemService(AccessibilityService.WINDOW_SERVICE) as WindowManager
     private val overlays = mutableMapOf<String, ImageView>()
+
+    // "크게 보기" 미리보기 창. 다른 앱으로 넘어가지 않도록 액티비티를 띄우지 않고,
+    // 이것도 그냥 화면 전체 크기의 오버레이 창으로 그린다. X를 누르면 이 창만 지운다.
+    private var previewView: View? = null
 
     /** 이번 화면에서 보이는 아바타 목록으로 전체 오버레이 상태를 갱신한다. */
     fun update(items: List<OverlayItem>) {
@@ -49,6 +55,7 @@ class OverlayManager(private val service: AccessibilityService) {
     fun clearAll() {
         overlays.values.forEach(::removeSafely)
         overlays.clear()
+        hideFullScreenPreview()
     }
 
     private fun addOverlay(item: OverlayItem) {
@@ -63,15 +70,11 @@ class OverlayManager(private val service: AccessibilityService) {
                 }
             }
             isClickable = true
-            // 제타 자체의 "프사 눌러서 크게 보기"처럼, 우리 오버레이도 누르면 원본(내가 지정한
-            // 이미지)을 전체화면으로 보여준다.
+            // 제타 자체의 "프사 눌러서 크게 보기"처럼, 누르면 크게 보여준다.
+            // 다른 앱(액티비티)으로 넘어가면 제타로 안 돌아오는 문제가 있어서,
+            // 화면 전체 크기의 오버레이 창을 하나 더 띄우는 방식으로 바꿨다 — 앱 전환이 아예 없다.
             setOnClickListener {
-                val intent = Intent(service, FullImageActivity::class.java).apply {
-                    putExtra(FullImageActivity.EXTRA_IMAGE_URI, item.imageUri.toString())
-                    putExtra(FullImageActivity.EXTRA_CHARACTER_NAME, item.name)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                runCatching { service.startActivity(intent) }
+                showFullScreenPreview(item.imageUri, item.name)
             }
         }
 
@@ -104,5 +107,69 @@ class OverlayManager(private val service: AccessibilityService) {
 
     private fun removeSafely(view: ImageView) {
         runCatching { windowManager.removeView(view) }
+    }
+
+    private fun showFullScreenPreview(imageUri: Uri, name: String) {
+        hideFullScreenPreview()
+
+        val root = FrameLayout(service).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+
+        val imageView = ImageView(service).apply {
+            setImageURI(imageUri)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        root.addView(imageView)
+
+        val nameLabel = TextView(service).apply {
+            text = name
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            ).apply { topMargin = 100 }
+        }
+        root.addView(nameLabel)
+
+        val closeButton = TextView(service).apply {
+            text = "✕"
+            setTextColor(Color.WHITE)
+            textSize = 26f
+            setPadding(40, 40, 40, 40)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.START
+            )
+        }
+        root.addView(closeButton)
+
+        // X, 이름, 배경/이미지 아무데나 눌러도 그냥 닫힌다.
+        val closeClickListener = View.OnClickListener { hideFullScreenPreview() }
+        root.setOnClickListener(closeClickListener)
+        imageView.setOnClickListener(closeClickListener)
+        closeButton.setOnClickListener(closeClickListener)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.OPAQUE
+        )
+
+        runCatching { windowManager.addView(root, params) }.onSuccess { previewView = root }
+    }
+
+    private fun hideFullScreenPreview() {
+        previewView?.let { runCatching { windowManager.removeView(it) } }
+        previewView = null
     }
 }
