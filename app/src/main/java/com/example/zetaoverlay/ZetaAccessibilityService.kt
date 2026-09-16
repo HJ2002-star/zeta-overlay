@@ -15,10 +15,9 @@ class ZetaAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
 
-    // 직전 폴링에서 본 아바타 id -> bounds. "이번에도 같은 id가 보였을 때만" 실제로 그린다.
-    // (WebView 특성상 스크롤 중에는 좌표가 실제 화면과 어긋난 채로 보고되는 경우가 있어서,
-    //  움직이는 동안엔 아예 숨기고, 자리가 안정된 뒤에만 오버레이를 띄우기 위한 안전장치)
-    private val lastSeenBounds = mutableMapOf<String, Rect>()
+    // 마지막으로 덤프 파일을 저장한 시각. 폴링 주기를 짧게 돌리다 보니 매번 파일을
+    // 쓰면 불필요한 디스크 부하가 생겨서, 덤프 저장 자체는 별도로 좀 더 느슨하게 한다.
+    private var lastDumpSaveAt = 0L
 
     // 이벤트가 안정적으로 안 오는 WebView 특성 때문에, 이벤트를 기다리지 않고
     // 일정 주기로 스스로 화면을 다시 확인한다. 이러면 (1) 제타를 벗어나는 순간
@@ -48,16 +47,19 @@ class ZetaAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow
         if (root == null || root.packageName != TARGET_PACKAGE) {
             overlayManager.update(emptyList())
-            lastSeenBounds.clear()
             return
         }
 
         // 1단계: 실제 제타 화면 구조를 모르므로, 먼저 화면 트리를 통째로 파일에 저장해둔다.
-        // PC 연결 없이도, 우리 앱의 "덤프 불러오기/공유하기" 버튼으로 이 내용을 확인할 수 있다.
+        // (폴링이 짧아져서, 매번 쓰지 않고 DUMP_SAVE_INTERVAL_MS 간격으로만 저장)
         if (DEBUG_DUMP_TREE) {
-            val builder = StringBuilder()
-            buildDumpText(root, 0, builder)
-            DumpStore.save(this, builder.toString())
+            val now = System.currentTimeMillis()
+            if (now - lastDumpSaveAt >= DUMP_SAVE_INTERVAL_MS) {
+                val builder = StringBuilder()
+                buildDumpText(root, 0, builder)
+                DumpStore.save(this, builder.toString())
+                lastDumpSaveAt = now
+            }
         }
 
         // 2단계: 실제 덤프로 확인된 구조 — 아바타는 ImageView가 아니라
@@ -77,15 +79,10 @@ class ZetaAccessibilityService : AccessibilityService() {
             if (!isDuplicate) deduped.add(candidate)
         }
 
-        // 같은 id가 "직전 폴링에도" 있었던 것만 실제로 그린다. 스크롤 중이라
-        // 이번에 처음 나타난 id는 아직 좌표가 안 맞을 수 있으니 한 사이클 건너뛰고,
-        // 다음 폴링(0.2초 뒤)에도 같은 자리에 있으면 그때 그린다.
-        val stableItems = deduped.filter { lastSeenBounds.containsKey(it.id) }
-
-        lastSeenBounds.clear()
-        deduped.forEach { lastSeenBounds[it.id] = it.bounds }
-
-        overlayManager.update(stableItems)
+        // 폴링 주기를 짧게(50ms) 돌려서 스크롤 중에도 계속 실시간으로 위치를 맞춘다.
+        // (예전엔 "직전 폴링에도 같은 자리에 있었을 때만" 그리는 안정화 필터가 있었는데,
+        //  위치 계산 자체가 정확해진 뒤로는 오히려 움직일 때 안 보이는 게 더 어색해서 뺐다.)
+        overlayManager.update(deduped)
     }
 
     private fun collectAvatarButtons(node: AccessibilityNodeInfo, out: MutableList<OverlayItem>) {
@@ -132,7 +129,6 @@ class ZetaAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         overlayManager.update(emptyList())
-        lastSeenBounds.clear()
     }
 
     override fun onDestroy() {
@@ -147,8 +143,12 @@ class ZetaAccessibilityService : AccessibilityService() {
         private const val TAG = "ZetaOverlayService"
         private const val TARGET_PACKAGE = "com.scatterlab.messenger"
 
-        // 화면을 다시 확인하는 주기(ms). 너무 짧으면 배터리/성능에 부담, 너무 길면 스크롤 싱크가 늦음.
-        private const val POLL_INTERVAL_MS = 200L
+        // 화면을 다시 확인하는 주기(ms). 짧을수록 스크롤 중 트래킹이 매끄러워지지만
+        // 배터리 소모가 늘어난다. 개인용이라 트래킹 매끄러움을 우선해서 짧게 잡음.
+        private const val POLL_INTERVAL_MS = 50L
+
+        // 덤프 파일 저장 주기(ms). 폴링(50ms)마다 매번 파일을 쓰면 낭비라 이건 따로 느슨하게.
+        private const val DUMP_SAVE_INTERVAL_MS = 500L
 
         // 아바타로 인정할 Button 크기 범위(px). 실측 기준 96px 정사각형 (1080폭 기기).
         private const val AVATAR_MIN_PX = 60
