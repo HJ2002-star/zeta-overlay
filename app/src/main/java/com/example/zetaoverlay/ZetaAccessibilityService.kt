@@ -62,10 +62,15 @@ class ZetaAccessibilityService : AccessibilityService() {
             }
         }
 
-        // 2단계: 실제 덤프로 확인된 구조 — 아바타는 ImageView가 아니라
-        // "정사각형 Button이고, 그 Button의 text 자체가 캐릭터 이름"이다.
+        // 2단계: 아바타 후보(Button 또는 Image, 정사각형)를 모으고, 이름은 두 가지 방법으로 찾는다.
+        //  (a) 그 자신의 text가 곧 이름인 경우 (실제 사진이 있는 공식 캐릭터일 때 이렇게 잡힘)
+        //  (b) 자신은 text가 없고(예: 사진 없는 기본 회색 아이콘), 옆의 이름 라벨 TextView로 찾아야
+        //      하는 경우 (유저가 직접 추가한, 사진 없는 캐릭터일 때 이렇게 잡히는 걸로 확인됨)
+        val nameCandidates = mutableListOf<Pair<Rect, String>>()
+        collectNameCandidates(root, nameCandidates)
+
         val rawItems = mutableListOf<OverlayItem>()
-        collectAvatarButtons(root, rawItems)
+        collectAvatarButtons(root, nameCandidates, rawItems)
 
         // 같은 이름의 아바타가 아주 가까운 위치에 중복으로 잡히는 경우(WebView 쪽 중복 노드로
         // 추정) 하나만 남긴다 — 사진에서 프사 밑에 다른 이미지가 겹쳐 보이던 문제의 원인.
@@ -85,35 +90,74 @@ class ZetaAccessibilityService : AccessibilityService() {
         overlayManager.update(deduped)
     }
 
-    private fun collectAvatarButtons(node: AccessibilityNodeInfo, out: MutableList<OverlayItem>) {
-        if (node.className == "android.widget.Button" && !node.text.isNullOrBlank()) {
-            val name = node.text.toString()
+    private fun collectAvatarButtons(
+        node: AccessibilityNodeInfo,
+        nameCandidates: List<Pair<Rect, String>>,
+        out: MutableList<OverlayItem>
+    ) {
+        if (node.className == "android.widget.Button" || node.className == "android.widget.Image") {
             val bounds = Rect().also { node.getBoundsInScreen(it) }
             val ratio = bounds.width().toFloat() / bounds.height().coerceAtLeast(1)
-            val looksLikeAvatar = bounds.width() in AVATAR_MIN_PX..AVATAR_MAX_PX &&
-                ratio in 0.7f..1.4f &&
-                name.length <= MAX_NAME_LENGTH
+            val looksLikeAvatarSize = bounds.width() in AVATAR_MIN_PX..AVATAR_MAX_PX &&
+                ratio in 0.7f..1.4f
 
-            if (looksLikeAvatar) {
-                mappingRepository.getImageFor(name)?.let { imageUri ->
-                    // id에 y좌표를 대략적인 구간(30px)으로 묶어서, 스크롤 중 미세한 좌표 변화로
-                    // 매번 새 오버레이가 생성/삭제되는 걸 줄인다.
-                    val id = "$name@${bounds.top / 30}"
-                    // 실측 결과: 접근성 좌표가 실제 프사보다 "프사 한 칸 크기만큼" 아래로 잡힘.
-                    // 크기는 그대로 두고, 그만큼 위로 옮겨서 실제 프사 위치에 맞춘다.
-                    val adjustedBounds = Rect(
-                        bounds.left,
-                        bounds.top - bounds.height(),
-                        bounds.right,
-                        bounds.top
-                    )
-                    out.add(OverlayItem(id, name, adjustedBounds, imageUri))
+            if (looksLikeAvatarSize) {
+                // 자기 자신의 text가 이름이면 그걸 쓰고(공식 캐릭터, 사진 있음),
+                // 없으면 옆의 이름 라벨을 찾는다(유저가 만든 캐릭터, 기본 회색 아이콘인 경우).
+                val ownText = node.text?.toString()
+                val name = if (!ownText.isNullOrBlank() && ownText.length <= MAX_NAME_LENGTH) {
+                    ownText
+                } else {
+                    findClosestName(bounds, nameCandidates)
+                }
+
+                if (name != null) {
+                    mappingRepository.getImageFor(name)?.let { imageUri ->
+                        // id에 y좌표를 대략적인 구간(30px)으로 묶어서, 스크롤 중 미세한 좌표 변화로
+                        // 매번 새 오버레이가 생성/삭제되는 걸 줄인다.
+                        val id = "$name@${bounds.top / 30}"
+                        // 실측 결과: 접근성 좌표가 실제 프사보다 "프사 한 칸 크기만큼" 아래로 잡힘.
+                        // 크기는 그대로 두고, 그만큼 위로 옮겨서 실제 프사 위치에 맞춘다.
+                        val adjustedBounds = Rect(
+                            bounds.left,
+                            bounds.top - bounds.height(),
+                            bounds.right,
+                            bounds.top
+                        )
+                        out.add(OverlayItem(id, name, adjustedBounds, imageUri))
+                    }
                 }
             }
         }
         for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { collectAvatarButtons(it, out) }
+            node.getChild(i)?.let { collectAvatarButtons(it, nameCandidates, out) }
         }
+    }
+
+    private fun collectNameCandidates(node: AccessibilityNodeInfo, out: MutableList<Pair<Rect, String>>) {
+        if (node.className == "android.widget.TextView" &&
+            !node.text.isNullOrBlank() &&
+            node.text.length <= MAX_NAME_LENGTH
+        ) {
+            val bounds = Rect().also { node.getBoundsInScreen(it) }
+            out.add(bounds to node.text.toString())
+        }
+        for (i in 0 until node.childCount) {
+            node.getChild(i)?.let { collectNameCandidates(it, out) }
+        }
+    }
+
+    /** 아바타 오른쪽, 비슷한 높이에 있는 이름 텍스트 중 가장 가까운 것을 찾는다. */
+    private fun findClosestName(avatar: Rect, candidates: List<Pair<Rect, String>>): String? {
+        return candidates
+            .filter { (bounds, _) ->
+                val horizontallyToTheRight = bounds.left >= avatar.right - HORIZONTAL_TOLERANCE_PX
+                val verticallyNear = bounds.centerY() in
+                    (avatar.top - VERTICAL_TOLERANCE_PX)..(avatar.bottom + VERTICAL_TOLERANCE_PX)
+                horizontallyToTheRight && verticallyNear
+            }
+            .minByOrNull { (bounds, _) -> kotlin.math.abs(bounds.top - avatar.top) }
+            ?.second
     }
 
     private fun buildDumpText(node: AccessibilityNodeInfo, depth: Int, builder: StringBuilder) {
@@ -159,6 +203,10 @@ class ZetaAccessibilityService : AccessibilityService() {
 
         // 같은 이름의 중복 후보를 걸러낼 때, 이 거리(px) 이내면 "같은 아바타"로 취급
         private const val DEDUP_DISTANCE_PX = 150
+
+        // 아바타 자신에게 이름 text가 없을 때(기본 회색 아이콘 등), 옆의 이름 라벨을 찾기 위한 허용 범위(px)
+        private const val HORIZONTAL_TOLERANCE_PX = 20
+        private const val VERTICAL_TOLERANCE_PX = 40
 
         // 처음엔 true로 두고 실제 화면 구조를 Logcat에서 확인한 뒤 false로 바꾸세요.
         private const val DEBUG_DUMP_TREE = true
