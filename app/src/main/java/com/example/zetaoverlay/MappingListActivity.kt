@@ -1,6 +1,5 @@
 package com.example.zetaoverlay
 
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
@@ -10,6 +9,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
@@ -22,15 +22,20 @@ class MappingListActivity : AppCompatActivity() {
     // "변경" 버튼을 누른 캐릭터 이름을 잠깐 들고 있다가, 이미지 선택 결과가 오면 사용한다.
     private var pendingReplaceName: String? = null
 
+    // 갤러리 사진 선택기(Photo Picker)를 바로 띄운다.
     private val pickImageLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         val name = pendingReplaceName
         if (uri != null && name != null) {
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            repository.saveMapping(name, uri)
-            Toast.makeText(this, "'$name' 이미지 변경 완료", Toast.LENGTH_SHORT).show()
-            refreshList()
+            val savedUri = ImageStore.copyToInternalStorage(this, uri, name)
+            if (savedUri != null) {
+                repository.saveMapping(name, savedUri)
+                Toast.makeText(this, "'$name' 이미지 변경 완료", Toast.LENGTH_SHORT).show()
+                refreshList()
+            } else {
+                Toast.makeText(this, "이미지 저장에 실패했어요", Toast.LENGTH_SHORT).show()
+            }
         }
         pendingReplaceName = null
     }
@@ -92,7 +97,9 @@ class MappingListActivity : AppCompatActivity() {
             text = "변경"
             setOnClickListener {
                 pendingReplaceName = name
-                pickImageLauncher.launch(arrayOf("image/*"))
+                pickImageLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
             }
         }
 

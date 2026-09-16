@@ -9,6 +9,7 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
@@ -17,16 +18,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var repository: CharacterMappingRepository
     private var pickedImageUri: Uri? = null
 
-    // OpenDocument는 영구 권한(FLAG_GRANT_READ_URI_PERMISSION)을 받을 수 있어서
-    // 재부팅 후에도, 액티비티가 없는 서비스 컨텍스트에서도 이미지를 읽을 수 있다.
+    // 갤러리 사진 선택기(Photo Picker)를 바로 띄운다 — Files 앱 같은 중간 선택 화면 없이
+    // 곧바로 사진 그리드가 뜬다. 여기서 받은 Uri는 오래 못 쓰므로, 저장(Save) 시점에
+    // ImageStore로 앱 내부에 복사해서 영구 보관한다.
     private val pickImageLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
             pickedImageUri = uri
             findViewById<ImageView>(R.id.imagePreview).setImageURI(uri)
         }
@@ -39,7 +37,9 @@ class MainActivity : AppCompatActivity() {
         repository = CharacterMappingRepository(this)
 
         findViewById<Button>(R.id.buttonPickImage).setOnClickListener {
-            pickImageLauncher.launch(arrayOf("image/*"))
+            pickImageLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
         }
 
         findViewById<Button>(R.id.buttonSave).setOnClickListener {
@@ -51,7 +51,13 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            repository.saveMapping(name, uri)
+            val savedUri = ImageStore.copyToInternalStorage(this, uri, name)
+            if (savedUri == null) {
+                Toast.makeText(this, "이미지 저장에 실패했어요. 다시 시도해주세요", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            repository.saveMapping(name, savedUri)
             Toast.makeText(this, "'$name' 매핑 저장 완료", Toast.LENGTH_SHORT).show()
         }
 
