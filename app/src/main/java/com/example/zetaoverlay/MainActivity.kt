@@ -1,5 +1,8 @@
 package com.example.zetaoverlay
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -12,6 +15,7 @@ import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : AppCompatActivity() {
 
@@ -35,6 +39,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         repository = CharacterMappingRepository(this)
+        setupCloudAuth()
 
         findViewById<Button>(R.id.buttonPickImage).setOnClickListener {
             pickImageLauncher.launch(
@@ -59,6 +64,13 @@ class MainActivity : AppCompatActivity() {
 
             repository.saveMapping(name, savedUri)
             Toast.makeText(this, "'$name' 매핑 저장 완료", Toast.LENGTH_SHORT).show()
+
+            // 클라우드 동기화는 백그라운드에서 — 실패해도 위 로컬 저장에는 영향 없음.
+            ImageStore.uploadToCloud(savedUri, name) { cloudUrl ->
+                if (cloudUrl != null) {
+                    repository.syncToFirestore(name, cloudUrl)
+                }
+            }
         }
 
         findViewById<Button>(R.id.buttonManageMappings).setOnClickListener {
@@ -86,6 +98,36 @@ class MainActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_TEXT, text)
             }
             startActivity(Intent.createChooser(shareIntent, "덤프 공유하기"))
+        }
+    }
+
+    /** 익명 로그인을 한 번 해두고, 발급된 UID를 화면에 표시 + 복사할 수 있게 한다. */
+    private fun setupCloudAuth() {
+        val auth = FirebaseAuth.getInstance()
+        val uidLabel = findViewById<TextView>(R.id.textUid)
+
+        fun showUid(uid: String) {
+            uidLabel.text = "UID: $uid"
+        }
+
+        val current = auth.currentUser
+        if (current != null) {
+            showUid(current.uid)
+        } else {
+            auth.signInAnonymously()
+                .addOnSuccessListener { result -> result.user?.uid?.let(::showUid) }
+                .addOnFailureListener { uidLabel.text = "동기화 로그인 실패 (오프라인이어도 로컬 기능은 정상 동작)" }
+        }
+
+        findViewById<Button>(R.id.buttonCopyUid).setOnClickListener {
+            val uid = auth.currentUser?.uid
+            if (uid == null) {
+                Toast.makeText(this, "아직 UID가 발급되지 않았어요", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("UID", uid))
+            Toast.makeText(this, "UID 복사됨", Toast.LENGTH_SHORT).show()
         }
     }
 }

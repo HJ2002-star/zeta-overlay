@@ -95,3 +95,28 @@ PC 용량이 부족해서 Android Studio를 못 깔 때는, 컴파일을 GitHub 
 나타나는 항목은 한 박자 쉬었다가, 자리가 안정되면 그때 그림). 스크롤이 아주 빠르면 여전히 잠깐
 안 보이거나 밀릴 수 있습니다. 이 문제가 계속되면, 어긋난 순간에 "덤프 불러오기"로 받은 텍스트와
 그 순간의 스크린샷을 같이 주시면 정확한 오차를 계산해서 고칠 수 있습니다.
+
+## 클라우드 동기화 (Firebase) 설정 — 빌드 전 필수
+
+캐릭터 매핑을 Firestore/Storage에 동기화하는 기능이 추가됐다. **`app/google-services.json` 파일이 없으면
+빌드 자체가 실패한다** (google-services 플러그인이 강제함). 아래 순서로 준비해야 한다.
+
+1. https://console.firebase.google.com 에서 새 프로젝트 생성
+2. 프로젝트에 Android 앱 추가, 패키지명은 정확히 `com.example.zetaoverlay`
+3. Authentication → Sign-in method에서 **익명(Anonymous)** 로그인 활성화
+4. Firestore Database 생성 (프로덕션 모드로 시작해도 무방 — 규칙은 아래에서 따로 설정)
+5. Storage 생성
+6. Firestore 규칙 탭에 이 저장소의 `firestore.rules` 내용을, Storage 규칙 탭에 `storage.rules` 내용을 붙여넣고 게시
+7. 앱 추가 화면에서 `google-services.json` 다운로드 → 이 프로젝트의 `app/` 폴더에 넣고 커밋
+   (개인용 프로젝트라 이 파일 자체를 저장소에 커밋해도 큰 문제 없음 — 실제 접근 제어는 위 규칙이 담당)
+
+이 파일이 준비되기 전까지는 GitHub Actions 빌드가 계속 실패한다.
+
+### 동작 방식
+- 로컬 저장(SharedPreferences + 내부 파일)은 기존과 동일하게 즉시/동기로 끝나며, 오프라인에서도 오버레이는
+  정상 동작한다.
+- 매핑 저장/변경 시 이미지가 `images/{uid}/{characterName}.jpg`로 Storage에 업로드되고, 성공하면 그 다운로드
+  URL이 `users/{uid}/mappings/{characterName}` Firestore 문서에 기록된다.
+- 매핑 삭제 시 해당 Firestore 문서도 함께 삭제된다.
+- 클라우드 동기화가 실패해도(네트워크 없음 등) 로컬 기능에는 전혀 영향 없다 — 조용히 무시된다.
+- 메인 화면에 앱의 UID가 표시되고 복사할 수 있다 (다른 기기에서 수동으로 대조할 때 등에 사용).

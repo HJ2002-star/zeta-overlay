@@ -33,6 +33,10 @@ class MappingListActivity : AppCompatActivity() {
                 repository.saveMapping(name, savedUri)
                 Toast.makeText(this, "'$name' 이미지 변경 완료", Toast.LENGTH_SHORT).show()
                 refreshList()
+
+                ImageStore.uploadToCloud(savedUri, name) { cloudUrl ->
+                    if (cloudUrl != null) repository.syncToFirestore(name, cloudUrl)
+                }
             } else {
                 Toast.makeText(this, "이미지 저장에 실패했어요", Toast.LENGTH_SHORT).show()
             }

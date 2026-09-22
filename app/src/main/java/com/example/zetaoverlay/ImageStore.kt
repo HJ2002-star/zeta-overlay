@@ -2,6 +2,8 @@ package com.example.zetaoverlay
 
 import android.content.Context
 import android.net.Uri
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.storage.FirebaseStorage
 import java.io.File
 
 /**
@@ -21,5 +23,25 @@ object ImageStore {
             }
             Uri.fromFile(destFile)
         }.getOrNull()
+    }
+
+    /**
+     * 로컬에 이미 저장된 파일을 Firebase Storage로 올리고, 완료되면 다운로드 URL을 콜백으로 준다.
+     * 실패해도(네트워크 없음 등) 로컬 저장/오버레이 동작에는 전혀 영향 없음 — 그냥 클라우드
+     * 동기화만 안 되는 것뿐이라 조용히 넘어간다.
+     */
+    fun uploadToCloud(localUri: Uri, characterName: String, onResult: (String?) -> Unit) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) {
+            onResult(null)
+            return
+        }
+        val safeName = characterName.replace(Regex("[^A-Za-z0-9가-힣]"), "_")
+        val ref = FirebaseStorage.getInstance().reference.child("images/$uid/$safeName.jpg")
+
+        ref.putFile(localUri)
+            .continueWithTask { ref.downloadUrl }
+            .addOnSuccessListener { url -> onResult(url.toString()) }
+            .addOnFailureListener { onResult(null) }
     }
 }
