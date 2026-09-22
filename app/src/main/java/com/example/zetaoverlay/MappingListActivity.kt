@@ -53,6 +53,30 @@ class MappingListActivity : AppCompatActivity() {
         repository = CharacterMappingRepository(this)
         container = findViewById(R.id.mappingContainer)
         refreshList()
+
+        findViewById<Button>(R.id.buttonSyncAll).setOnClickListener {
+            syncAllToCloud()
+        }
+    }
+
+    /** 이미 등록된 모든 매핑을 한 번에 Firestore로 올린다 (기존 매핑은 자동으로 안 올라가서 필요). */
+    private fun syncAllToCloud() {
+        val mappings = repository.getAll()
+        if (mappings.isEmpty()) {
+            Toast.makeText(this, "동기화할 매핑이 없어요", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        var successCount = 0
+        mappings.forEach { (name, uriString) ->
+            val base64 = ImageStore.encodeForFirestore(this, Uri.parse(uriString))
+            if (base64 != null) {
+                repository.syncToFirestore(name, base64)
+                successCount++
+            }
+        }
+
+        Toast.makeText(this, "$successCount / ${mappings.size}개 동기화 요청 보냄", Toast.LENGTH_SHORT).show()
     }
 
     override fun onSupportNavigateUp(): Boolean {
