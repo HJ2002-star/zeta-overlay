@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "103162209958",
+    "project_id": "zeta-overlay",
+    "storage_bucket": "zeta-overlay.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:103162209958:android:9c70ca7486ca9c93527667",
+        "android_client_info": {
+          "package_name": "com.example.zetaoverlay"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBiddAY2NcllRNyq1MKjDJqRFMIZdH9iVQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
