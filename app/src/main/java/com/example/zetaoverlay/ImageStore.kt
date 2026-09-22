@@ -1,9 +1,11 @@
 package com.example.zetaoverlay
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.storage.FirebaseStorage
+import android.util.Base64
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
@@ -12,6 +14,10 @@ import java.io.File
  * 끊길 수 있음), 아예 파일 자체를 우리 앱 안에 복사해두면 그런 걱정이 없어진다.
  */
 object ImageStore {
+
+    // Firestore 문서 하나가 1MB 제한이라, 클라우드 동기화용 썸네일은 작게 줄인다.
+    private const val THUMBNAIL_MAX_DIMENSION = 200
+    private const val THUMBNAIL_JPEG_QUALITY = 70
 
     fun copyToInternalStorage(context: Context, sourceUri: Uri, characterName: String): Uri? {
         val safeName = characterName.replace(Regex("[^A-Za-z0-9가-힣]"), "_")
@@ -26,22 +32,31 @@ object ImageStore {
     }
 
     /**
-     * 로컬에 이미 저장된 파일을 Firebase Storage로 올리고, 완료되면 다운로드 URL을 콜백으로 준다.
-     * 실패해도(네트워크 없음 등) 로컬 저장/오버레이 동작에는 전혀 영향 없음 — 그냥 클라우드
-     * 동기화만 안 되는 것뿐이라 조용히 넘어간다.
+     * 로컬 이미지를 작은 썸네일로 줄여서 Base64 문자열로 인코딩한다. Firebase Storage(카드 등록
+     * 필요)를 안 쓰고, 이 문자열 그대로를 Firestore 문서 필드에 저장해 클라우드 동기화한다.
+     * 실패해도(디코딩 오류 등) 로컬 저장/오버레이 동작에는 전혀 영향 없다.
      */
-    fun uploadToCloud(localUri: Uri, characterName: String, onResult: (String?) -> Unit) {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid
-        if (uid == null) {
-            onResult(null)
-            return
-        }
-        val safeName = characterName.replace(Regex("[^A-Za-z0-9가-힣]"), "_")
-        val ref = FirebaseStorage.getInstance().reference.child("images/$uid/$safeName.jpg")
+    fun encodeForFirestore(context: Context, localUri: Uri): String? {
+        return runCatching {
+            val original = context.contentResolver.openInputStream(localUri)?.use {
+                BitmapFactory.decodeStream(it)
+            } ?: return@runCatching null
 
-        ref.putFile(localUri)
-            .continueWithTask { ref.downloadUrl }
-            .addOnSuccessListener { url -> onResult(url.toString()) }
-            .addOnFailureListener { onResult(null) }
+            val scale = THUMBNAIL_MAX_DIMENSION.toFloat() / maxOf(original.width, original.height)
+            val resized = if (scale < 1f) {
+                Bitmap.createScaledBitmap(
+                    original,
+                    (original.width * scale).toInt().coerceAtLeast(1),
+                    (original.height * scale).toInt().coerceAtLeast(1),
+                    true
+                )
+            } else {
+                original
+            }
+
+            val output = ByteArrayOutputStream()
+            resized.compress(Bitmap.CompressFormat.JPEG, THUMBNAIL_JPEG_QUALITY, output)
+            Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        }.getOrNull()
     }
 }

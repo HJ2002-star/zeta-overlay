@@ -65,11 +65,9 @@ class MainActivity : AppCompatActivity() {
             repository.saveMapping(name, savedUri)
             Toast.makeText(this, "'$name' 매핑 저장 완료", Toast.LENGTH_SHORT).show()
 
-            // 클라우드 동기화는 백그라운드에서 — 실패해도 위 로컬 저장에는 영향 없음.
-            ImageStore.uploadToCloud(savedUri, name) { cloudUrl ->
-                if (cloudUrl != null) {
-                    repository.syncToFirestore(name, cloudUrl)
-                }
+            // 클라우드 동기화는 로컬 저장과 별개 — 실패해도 위 로컬 저장에는 영향 없음.
+            ImageStore.encodeForFirestore(this, savedUri)?.let { base64 ->
+                repository.syncToFirestore(name, base64)
             }
         }
 

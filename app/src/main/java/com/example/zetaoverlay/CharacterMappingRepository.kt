@@ -44,14 +44,14 @@ class CharacterMappingRepository(context: Context) {
         removeFromCloud(characterName)
     }
 
-    /** 업로드된 이미지의 클라우드 URL을 Firestore에 기록한다. 실패해도 조용히 무시. */
-    fun syncToFirestore(characterName: String, cloudImageUrl: String) {
+    /** 압축된 이미지(Base64)를 Firestore에 직접 기록한다. 실패해도 조용히 무시. */
+    fun syncToFirestore(characterName: String, imageBase64: String) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
         runCatching {
             FirebaseFirestore.getInstance()
                 .collection("users").document(uid)
                 .collection("mappings").document(characterName)
-                .set(mapOf("imageUrl" to cloudImageUrl, "updatedAt" to FieldValue.serverTimestamp()))
+                .set(mapOf("imageBase64" to imageBase64, "updatedAt" to FieldValue.serverTimestamp()))
                 .addOnFailureListener { e -> Log.w(TAG, "Firestore 동기화 실패(무시): ${e.message}") }
         }
     }
